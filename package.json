@@ -40,7 +40,7 @@
     "altv-enums/dist/enums.js",
     "altv-enums/types/**/*"
   ],
-  "repository": "https://github.com/xxshady/altv-esbuild",
+  "repository": "https://github.com/gotgameio/altv-esbuild",
   "author": "xshady",
   "license": "MIT",
   "type": "module"
