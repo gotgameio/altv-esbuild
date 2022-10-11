@@ -3,6 +3,8 @@ import { PLUGIN_NAME } from "@/shared"
 // eslint-disable-next-line camelcase
 const alt = ___altvEsbuild_altvInject_alt___
 
+const ___DEVMODE = false
+
 export class Logger {
   public readonly debug: (...args: unknown[]) => void
 

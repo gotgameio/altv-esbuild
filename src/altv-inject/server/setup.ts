@@ -30,7 +30,7 @@ if (_alt.isServer)
 
 export class ServerSetup {
   // TODO: need to do something with this shit: (e.g. when only server changes it takes time to restart)
-  private static readonly MAX_ANOTHER_BUILD_START_MS = 500
+  private static readonly MAX_ANOTHER_BUILD_START_MS = 2750
   private static readonly RECONNECT_MS = 500
 
   private readonly events: INetEvent = {
@@ -121,6 +121,8 @@ export class ServerSetup {
   private restartInProgress = false
   private connectedAgain = false
 
+  private resourceResourceTimer: number | undefined = undefined
+
   private readonly buildsInProgress = new Set<PluginMode>()
   private readonly syncedMetaKeys = new Set<string>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -204,7 +206,9 @@ export class ServerSetup {
     const name = this.getFullResourceName()
     this.log.info(`restarting resource ${name}...`)
 
-    _alt.restartResource(name)
+    this.resourceResourceTimer && _alt.clearTimeout(this.resourceResourceTimer);
+    this.resourceResourceTimer = _alt.setTimeout(() => _alt.restartResource(name), this.options.dev.playersReconnectDelay);
+    // _alt.restartResource(name)
   }
 
   private clearCurrentBuild(): void {
