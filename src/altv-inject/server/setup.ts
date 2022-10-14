@@ -30,7 +30,7 @@ if (_alt.isServer)
 
 export class ServerSetup {
   // TODO: need to do something with this shit: (e.g. when only server changes it takes time to restart)
-  private static readonly MAX_ANOTHER_BUILD_START_MS = 2750
+  private static readonly MAX_ANOTHER_BUILD_START_MS = 500
   private static readonly RECONNECT_MS = 500
 
   private readonly events: INetEvent = {
@@ -199,15 +199,19 @@ export class ServerSetup {
       this.log.error("resource restart already in progress")
       return
     }
-    this.restartInProgress = true
 
-    this.clearCurrentBuild()
+    this.resourceResourceTimer && _alt.clearTimeout(this.resourceResourceTimer)
+    this.resourceResourceTimer = _alt.setTimeout(() => {
+      this.restartInProgress = true
 
-    const name = this.getFullResourceName()
-    this.log.info(`restarting resource ${name}...`)
+      this.clearCurrentBuild()
 
-    this.resourceResourceTimer && _alt.clearTimeout(this.resourceResourceTimer);
-    this.resourceResourceTimer = _alt.setTimeout(() => _alt.restartResource(name), this.options.dev.playersReconnectDelay);
+      const name = this.getFullResourceName()
+      this.log.info(`restarting resource ${name}...`)
+
+      _alt.restartResource(name)
+    }, 3000)
+
     // _alt.restartResource(name)
   }
 
