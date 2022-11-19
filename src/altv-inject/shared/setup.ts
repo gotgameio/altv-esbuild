@@ -34,7 +34,7 @@ class SharedSetup {
 
   public readonly origAltOn?: typeof _alt["on"]
   public readonly origAltOnce?: typeof _alt["once"]
-  public readonly origAltOff?: typeof _alt["off"]
+  public readonly origAltOff?: AltRemoveEvent
   public readonly origAltSetMeta?: typeof _alt["setMeta"]
 
   // first record key is scope, second is event name
@@ -56,26 +56,26 @@ class SharedSetup {
 
   constructor(options: FilledPluginOptions) {
     if (options.dev.enabled) {
-      this.origAltOn = this.hookAltEventAdd("local", "on", false)
-      this.origAltOnce = this.hookAltEventAdd("local", "once", true)
-      this.origAltOff = this.hookAltEventRemove("local", "off")
+      this.origAltOn = this.hookAltEventAdd("local", "on", 1)
+      this.origAltOnce = this.hookAltEventAdd("local", "once", 1, true)
+      this.origAltOff = this.hookAltEventRemove("local", "off", 1)
 
       this.hookAlt("getEventListeners", (original, event) => {
         return (typeof event === "string")
           ? [...(this.eventHandlers.local[event] ?? [])]
           : original(event)
-      })
+      }, 1)
 
       this.hookAlt("getRemoteEventListeners", (original, event) => {
         return (typeof event === "string")
           ? [...(this.eventHandlers.remote[event] ?? [])]
           : original(event)
-      })
+      }, 1)
 
       this.origAltSetMeta = this.hookAlt("setMeta", (original, key, value) => {
         this.metaKeys.add(key)
         original(key, value)
-      })
+      }, 2)
 
       this.origAltOn("resourceStop", this.resourceStopEvent)
 
@@ -87,6 +87,7 @@ class SharedSetup {
     property: K,
     // eslint-disable-next-line @typescript-eslint/ban-types, @typescript-eslint/no-explicit-any
     replaceWith: V extends (...args: any) => any ? ((original: V, ...args: Parameters<V>) => ReturnType<V>) : Function,
+    expectedArgs: number,
   ): (typeof _alt)[K] {
     const original = (_alt)[property]
     if (original == null)
@@ -108,7 +109,12 @@ class SharedSetup {
       value: true,
     });
 
-    (_alt as Record<string, unknown>)[property] = replaceWith
+    (_alt as Record<string, unknown>)[property] = (...args: unknown[]): unknown => {
+      if (args.length < expectedArgs)
+        throw new Error(`${expectedArgs} arguments expected`)
+
+      return (replaceWith as (...args: unknown[]) => unknown)(...args)
+    }
 
     if ((altShared as Record<string, unknown>)[property] != null)
       (altShared as Record<string, unknown>)[property] = replaceWith
@@ -116,7 +122,7 @@ class SharedSetup {
     return original
   }
 
-  public hookAltEventAdd<K extends keyof typeof _alt>(scope: EventScope, funcName: K, once = false): AltAddUserEvent {
+  public hookAltEventAdd<K extends keyof typeof _alt>(scope: EventScope, funcName: K, expectedArgs: number, once = false): AltAddUserEvent {
     return this.hookAlt<K, AltAddEvent>(funcName, (
       original,
       eventOrHandler,
@@ -166,38 +172,44 @@ class SharedSetup {
       original(eventOrHandler, wrapper)
 
       // this.log.debug(`alt.${funcName} hook called with arguments:`, eventOrHandler, typeof handler)
-    }) as AltAddUserEvent
+    }, expectedArgs) as AltAddUserEvent
   }
 
-  public hookAltEventRemove<K extends keyof typeof _alt>(scope: EventScope, funcName: K): AltRemoveEvent {
+  public hookAltEventRemove<K extends keyof typeof _alt>(scope: EventScope, funcName: K, expectedArgs: number): AltRemoveEvent {
     return this.hookAlt<K, AltRemoveEvent>(funcName, (
       original,
-      event,
+      eventOrHandler: string | ((...args: unknown[]) => void),
       handler,
     ) => {
-      this.log.debug(`hooked alt.${funcName} called args:`, event, typeof handler)
+      this.log.debug(`hooked alt.${funcName} called args:`, eventOrHandler, typeof handler)
 
-      if (event === null) {
-        original(null, handler)
+      if (!(typeof eventOrHandler === "string" || typeof eventOrHandler === "function"))
+        throw new Error("Expected a string or function as first argument")
+
+      if (typeof eventOrHandler === "function") {
+        (original as unknown as ((genericListener: (...args: unknown[]) => void) => void))(eventOrHandler)
         return
       }
 
-      const handlers = this.eventHandlersWrappers.get(event)
+      if (typeof handler !== "function")
+        throw new Error("Expected a function as second argument")
+
+      const handlers = this.eventHandlersWrappers.get(eventOrHandler)
       if (!handlers) {
-        this.log.debug(`alt.${funcName} called but event handlers are not registered for event: ${event}`)
+        this.log.debug(`alt.${funcName} called but event handlers are not registered for event: ${eventOrHandler}`)
         return
       }
 
       const wrapper = handlers.get(handler)
       if (!wrapper) {
-        this.log.debug(`alt.${funcName} called but event handler is not registered for event: ${event}`)
+        this.log.debug(`alt.${funcName} called but event handler is not registered for event: ${eventOrHandler}`)
         return
       }
 
-      this.eventHandlers[scope][event]?.delete(handler)
+      this.eventHandlers[scope][eventOrHandler]?.delete(handler)
       handlers?.delete(handler)
-      original(event, wrapper)
-    }) as AltRemoveEvent
+      original(eventOrHandler, wrapper)
+    }, expectedArgs) as AltRemoveEvent
   }
 
   public hookAltEvent<K extends AltEventNames>(
@@ -340,6 +352,18 @@ class SharedSetup {
     )
   }
 
+  public defineMetaSetter(proto: Record<symbol, unknown>, originalMethodKey: symbol, storeKey: symbol) {
+    return function(this: typeof proto, key: string, value: unknown): void {
+      if (arguments.length < 2)
+        throw new Error("2 arguments expected");
+
+      (this[originalMethodKey] as (key: string, value: unknown) => void)(key, value)
+
+      this[storeKey] ??= {};
+      (this[storeKey] as Record<string, unknown>)[key] = value
+    }
+  }
+
   private hookAltLogging(): void {
     const customLog = (original: (...args: unknown[]) => void, ...values: unknown[]): void => {
       original(
@@ -349,12 +373,13 @@ class SharedSetup {
       )
     }
 
-    const original = this.hookAlt("log", customLog)
+    const original = this.hookAlt("log", customLog, 0)
 
     if (_alt.isClient) console.log = customLog.bind(null, original)
 
     // @ts-expect-error TODO: remove "if" when altv 13.0 will be released
-    if (_alt.logDebug) this.hookAlt("logDebug", customLog)
+    if (_alt.logDebug)
+      this.hookAlt("logDebug", customLog, 0)
   }
 }
 

@@ -9,7 +9,7 @@ import {
   PLUGIN_NAME,
   EventManager,
 } from "@/shared"
-import type { BaseObjectClass } from "../shared"
+import type { AltRemoveUserEvent, BaseObjectClass } from "../shared"
 import {
   CLIENT_EVENTS,
   SERVER_EVENTS,
@@ -135,14 +135,14 @@ export class ServerSetup {
     const { dev, bugFixes } = options
 
     if (dev.enabled) {
-      this.origAltOnClient = sharedSetup.hookAltEventAdd("remote", "onClient")
-      sharedSetup.hookAltEventAdd("remote", "onceClient", true)
-      sharedSetup.hookAltEventRemove("remote", "offClient")
+      this.origAltOnClient = sharedSetup.hookAltEventAdd("remote", "onClient", 1)
+      sharedSetup.hookAltEventAdd("remote", "onceClient", 1, true)
+      sharedSetup.hookAltEventRemove("remote", "offClient", 1)
 
       sharedSetup.hookAlt("setSyncedMeta", (original, key, value) => {
         this.syncedMetaKeys.add(key)
         original(key, value)
-      })
+      }, 2)
 
       this.hookBaseObjects()
       const clearPlayerMeta = this.hookAltPlayer()
@@ -255,18 +255,10 @@ export class ServerSetup {
     _proto[originalSetStreamSyncedMeta] = proto.setStreamSyncedMeta
     _proto[originalSetLocalMeta] = proto.setLocalMeta
 
-    const defineMetaSetter = (originalMethodKey: symbol, storeKey: symbol) =>
-      function(this: typeof _proto, key: string, value: unknown): void {
-        (this[originalMethodKey] as (key: string, value: unknown) => void)(key, value)
-
-        this[storeKey] ??= {};
-        (this[storeKey] as Record<string, unknown>)[key] = value
-      }
-
-    proto.setMeta = defineMetaSetter(originalSetMeta, metaStoreKey)
-    proto.setSyncedMeta = defineMetaSetter(originalSetSyncedMeta, syncedMetaStoreKey)
-    proto.setStreamSyncedMeta = defineMetaSetter(originalSetStreamSyncedMeta, streamSyncedMetaStoreKey)
-    proto.setLocalMeta = defineMetaSetter(originalSetLocalMeta, localMetaStoreKey)
+    proto.setMeta = sharedSetup.defineMetaSetter(_proto, originalSetMeta, metaStoreKey)
+    proto.setSyncedMeta = sharedSetup.defineMetaSetter(_proto, originalSetSyncedMeta, syncedMetaStoreKey)
+    proto.setStreamSyncedMeta = sharedSetup.defineMetaSetter(_proto, originalSetStreamSyncedMeta, streamSyncedMetaStoreKey)
+    proto.setLocalMeta = sharedSetup.defineMetaSetter(_proto, originalSetLocalMeta, localMetaStoreKey)
 
     return (): void => {
       for (const player of _alt.Player.all) {
@@ -376,16 +368,6 @@ export class ServerSetup {
     sharedSetup.origAltOn!("playerConnect", (player: alt.Player) => {
       sharedSetup.setPlayerObjectPrototype(player)
     })
-
-    // // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    // sharedSetup.hookAltEvent("playerDisconnect", (player, ...args: [any]): [alt.Player, any] => {
-    //   sharedSetup.setPlayerObjectPrototype(player)
-
-    //   return [
-    //     player,
-    //     ...args,
-    //   ]
-    // })
   }
 
   private initRestartConsoleCommand(options: FilledPluginOptions): void {
@@ -547,7 +529,7 @@ export class ServerSetup {
 
     ready.promise.finally(() => {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      sharedSetup.origAltOff!("playerDisconnect", handler)
+      (sharedSetup.origAltOff! as AltRemoveUserEvent)("playerDisconnect", handler)
     })
 
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion

@@ -9,10 +9,10 @@ export type AltAddUserEvent = (
   handler: (...args: any[]) => void
 ) => void
 
-export type AltRemoveEvent = (
-  event: string | null,
-  handler: ((...args: unknown[]) => void)
-) => void
+export type AltRemoveGenericEvent = (handler: ((...args: unknown[]) => void)) => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AltRemoveUserEvent = (event: string, handler: ((...args: any[]) => void)) => void
+export type AltRemoveEvent = AltRemoveGenericEvent | AltRemoveUserEvent
 
 export type EventScope = "local" | "remote"
 
