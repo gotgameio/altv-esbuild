@@ -56,7 +56,7 @@ class SharedSetup {
 
   constructor(options: FilledPluginOptions) {
     if (options.dev.enabled) {
-      this.origAltOn = this.hookAltEventAdd("local", "on", 1)
+      this.origAltOn = this.hookAltEventAdd("local", "on", 1) as typeof _alt["on"]
       this.origAltOnce = this.hookAltEventAdd("local", "once", 1, true)
       this.origAltOff = this.hookAltEventRemove("local", "off", 1)
 
@@ -122,7 +122,7 @@ class SharedSetup {
     return original
   }
 
-  public hookAltEventAdd<K extends keyof typeof _alt>(scope: EventScope, funcName: K, expectedArgs: number, once = false): AltAddUserEvent {
+  public hookAltEventAdd<K extends keyof typeof _alt>(scope: EventScope, funcName: K, expectedArgs: number, once = false): AltAddUserEvent | AltAddEvent {
     return this.hookAlt<K, AltAddEvent>(funcName, (
       original,
       eventOrHandler,
@@ -160,8 +160,18 @@ class SharedSetup {
           return
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion, @typescript-eslint/await-thenable
-        await handler!(...args)
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion, @typescript-eslint/await-thenable
+          await handler!(...args)
+        }
+        catch (e) {
+          _alt.logError(
+            `Uncaught exception in event listener of event \"${eventOrHandler}\":\n`,
+            (e as Error)?.stack ?? e,
+          )
+
+          throw e
+        }
       }
 
       const handlers = this.eventHandlersWrappers.get(eventOrHandler) ?? new Map()
@@ -172,7 +182,7 @@ class SharedSetup {
       original(eventOrHandler, wrapper)
 
       // this.log.debug(`alt.${funcName} hook called with arguments:`, eventOrHandler, typeof handler)
-    }, expectedArgs) as AltAddUserEvent
+    }, expectedArgs) as AltAddUserEvent | AltAddEvent
   }
 
   public hookAltEventRemove<K extends keyof typeof _alt>(scope: EventScope, funcName: K, expectedArgs: number): AltRemoveEvent {
