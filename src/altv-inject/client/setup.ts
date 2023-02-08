@@ -37,6 +37,9 @@ export class ClientSetup {
     if (bugFixes.webViewFlickering)
       this.initWebViewFlickeringBugFix()
 
+    if (bugFixes.playerDamageOnFirstConnect)
+      this.initPlayerDamageOnFirstConnectFix()
+
     if (dev.enabled) {
       this.origAltOnServer = sharedSetup.hookAltEventAdd("remote", "onServer", 1)
       sharedSetup.hookAltEventAdd("remote", "onceServer", 1, true)
@@ -112,7 +115,7 @@ export class ClientSetup {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     sharedSetup.origAltOn!(
       "resourceStop",
-      () => sharedSetup.emitAltEvent("disconnect"),
+      () => sharedSetup.emitAltEvent<"client_disconnect">("disconnect"),
     )
   }
 
@@ -130,7 +133,7 @@ export class ClientSetup {
       this.log.debug("received connectionComplete")
       if (connectionCompleteCalled) return
 
-      sharedSetup.emitAltEvent("connectionComplete")
+      sharedSetup.emitAltEvent<"client_connectionComplete">("connectionComplete")
     })
   }
 
@@ -202,5 +205,23 @@ export class ClientSetup {
           player.deleteMeta(key)
       }
     }
+  }
+
+  private initPlayerDamageOnFirstConnectFix(): void {
+    // origAltOnClient is only set in dev mode
+    const onServer = this.origAltOnServer ?? _alt.onServer
+
+    onServer(CLIENT_EVENTS.loadPlayerModels, async () => {
+      this.log.debug("playerDamageOnFirstConnectFix loading models...")
+
+      const results = await Promise.allSettled([
+        _alt.Utils.requestModel("mp_m_freemode_01"),
+        _alt.Utils.requestModel("mp_f_freemode_01"),
+      ])
+
+      this.log.debug("playerDamageOnFirstConnectFix load model promises results", results)
+
+      _alt.emitServerRaw(SERVER_EVENTS.playerModelsLoaded)
+    })
   }
 }

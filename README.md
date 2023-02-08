@@ -2,8 +2,7 @@
 
 Special thanks ❤️ to [innxz](https://github.com/innxz) for financially supporting me and this library.
 
-A plugin that greatly simplifies server/client JS and TS development (as well as production) on the [alt:V](https://altv.mp) platform.
-
+A plugin that greatly simplifies server/client JS and TS development (as well as production) on the [alt:V](https://altv.mp) platform.<br>
 (extended and improved version of the previous [esbuild dev plugin](https://github.com/xxshady/esbuild-plugin-altv-dev-server)).
 
 ## Features
@@ -14,11 +13,10 @@ A plugin that greatly simplifies server/client JS and TS development (as well as
 - Restart console command for client and server ("res" by default)
 - Improved top-level exception output during development
 - Direct support for alt:V enums, even in JS code ([documentation](https://xxshady.github.io/altv-esbuild/interfaces/ipluginoptions.html#altvenums))
-- Enhanced alt.log value formatting ([documentation](https://xxshady.github.io/altv-esbuild/interfaces/ipluginoptions.html#enhancedaltlog))
 
 ## Docs
 
-Docs web page: <https://xxshady.github.io/altv-esbuild>
+Docs web page: <https://xxshady.github.io/altv-esbuild>.
 
 ## How to use?
 
@@ -38,16 +36,32 @@ Example of the build server code:
 import esbuild from "esbuild"
 import { altvEsbuild } from "altv-esbuild"
 
+// your own variable
+const DEV_MODE = true
+
 esbuild.build({
   entryPoints: ["src/main.js"],
   outfile: "dist/bundle.js",
   bundle: true,
-  watch: dev,
+  watch: DEV_MODE,
+  target: "esnext",
+  format: "esm",
+  
   plugins: [
     altvEsbuild({
       mode: "server", // use "server" for server code, and "client" for client code
 
-      dev: true, // see docs for more info
+      // see docs for more info about these options:
+      dev: {
+        enabled: DEV_MODE,
+
+        // if `DEV_MODE` is false it will also be automatically set to false too
+        enhancedRestartCommand: true, 
+      },
+      altvEnums: true,
+      bugFixes: {
+        playerDamageOnFirstConnect: true,
+      },
     }),
   ],
   
@@ -61,9 +75,22 @@ esbuild.build({
 })
 ```
 
+## Limitations
+
+### alt:V
+
+[Connection queue](https://docs.altv.mp/articles/connection_queue.html) is not supported between hot reloads (or just resource restarts).<br>
+Player disconnect is also [not supported](https://github.com/xxshady/altv-esbuild/issues/8) between hot reloads. Only [player connect](https://xxshady.github.io/altv-esbuild/interfaces/iplugindevoption.html#playersreconnect) is emulated for now in dev environment.
+
+### esbuild
+
+Not supported build options
+- Wild-card `*` [`external`](https://esbuild.github.io/api/#external) (for example: `"node_modules/*"`)
+- [`packages`](https://esbuild.github.io/api/#packages)
+
 ## How to find exact source location of any exception?
 
-You can use [esbuild source-maps](https://esbuild.github.io/api/#sourcemap) like this: `sourcemap: "inline"`
+You can use [esbuild source-maps](https://esbuild.github.io/api/#sourcemap) like this: `sourcemap: "inline"`.
 
 ### serverside
 

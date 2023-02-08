@@ -77,7 +77,6 @@ export class ServerSetup {
       this.clientConnected = true
     },
 
-    // TODO: TEST IT
     clientDisconnect: (): void => {
       this.log.debug("clientDisconnect")
       this.clientConnected = false
@@ -134,6 +133,9 @@ export class ServerSetup {
   constructor(private readonly options: FilledPluginOptions) {
     const { dev, bugFixes } = options
 
+    if (bugFixes.playerDamageOnFirstConnect)
+      this.initPlayerDamageOnFirstConnectFix()
+
     if (dev.enabled) {
       this.origAltOnClient = sharedSetup.hookAltEventAdd("remote", "onClient", 1) as typeof alt.onClient
       sharedSetup.hookAltEventAdd("remote", "onceClient", 1, true)
@@ -150,7 +152,10 @@ export class ServerSetup {
       let despawnPlayers = (): void => {}
       if (dev.playersReconnect) {
         this.initPlayersReconnect(options)
-        despawnPlayers = this.despawnPlayers.bind(this)
+
+        const streamOutPos = new _alt.Vector3((_alt.getServerConfig().mapBoundsMaxX ?? 100_000) + 2000)
+        this.log.debug("despawnPlayers streamOutPos:", streamOutPos)
+        despawnPlayers = this.despawnPlayers.bind(this, streamOutPos)
       }
 
       sharedSetup.onResourceStop(
@@ -185,6 +190,9 @@ export class ServerSetup {
 
       if (bugFixes.playerPrototype)
         this.initPlayerPrototypeTempFix()
+
+      if (dev.serverStartedEvent)
+        this.initServerStartedEvent()
     }
   }
 
@@ -282,7 +290,6 @@ export class ServerSetup {
   }
 
   private initPlayersReconnect({ dev: { playersReconnectDelay, playersReconnectResetPos } }: FilledPluginOptions): void {
-    const initialPos = new _alt.Vector3(0, 0, 72)
     const resourceRestartedKey = `${PLUGIN_NAME}:resourceRestarted`
 
     this.log.debug("_alt.getMeta(resourceRestartedKey):", _alt.getMeta(resourceRestartedKey))
@@ -318,8 +325,6 @@ export class ServerSetup {
         p.visible = true
         p.frozen = false
 
-        if (playersReconnectResetPos) p.pos = initialPos
-
         this.waitForPlayerReadyEvent(p)
           .then((res) => {
             if (!res) {
@@ -329,7 +334,7 @@ export class ServerSetup {
 
             this.log.debug("waitForPlayerReadyEvent success player:", p.name, p.id)
 
-            _alt.emit("playerConnect", p)
+            sharedSetup.emitAltEvent<"server_playerConnect">("playerConnect", p)
           })
           .catch(e => {
             this.log.error(e.stack)
@@ -338,7 +343,7 @@ export class ServerSetup {
     }, playersReconnectDelay)
   }
 
-  private despawnPlayers(): void {
+  private despawnPlayers(streamOutPos: alt.Vector3): void {
     this.log.debug("despawn players")
 
     for (const p of _alt.Player.all) {
@@ -346,9 +351,12 @@ export class ServerSetup {
 
       p.removeAllWeapons()
       p.clearBloodDamage()
-      // despawn doesnt call detach now (see alt:V issue https://github.com/altmp/altv-issues/issues/1456)
+      // despawn doesn't call detach now (see alt:V issue https://github.com/altmp/altv-issues/issues/1456)
       p.detach()
       p.despawn()
+      p.visible = false
+
+      if (this.options.dev.playersReconnectResetPos) p.pos = streamOutPos
     }
   }
 
@@ -488,7 +496,6 @@ export class ServerSetup {
     }
 
     if (mode === "server") {
-      // TODO: TEST IT
       if (!this.clientConnected) {
         this.log.debug("[buildStart] client is not connected, skip waiting for another build")
         this.waitingForBuildEnd = mode
@@ -557,5 +564,86 @@ export class ServerSetup {
     return path
       .slice(resourcesDir.length)
       .replaceAll("\\", "/")
+  }
+
+  private initServerStartedEvent(): void {
+    this.log.debug("initServerStartedEvent")
+
+    let timer: InstanceType<typeof alt.Utils.Timeout> | null = new _alt.Utils.Timeout(() => {
+      timer = null
+
+      this.log.debug("emitting serverStarted from timer")
+      sharedSetup.emitAltEvent<"server_serverStarted">("serverStarted")
+    }, 500)
+
+    sharedSetup.hookAltEvent("serverStarted", (...args) => {
+      if (!timer) {
+        this.log.error("original serverStarted was called, but timer is already null")
+        return false
+      }
+      timer?.destroy()
+      timer = null
+
+      this.log.debug("emitting serverStarted from original")
+      return args
+    })
+  }
+
+  private initPlayerDamageOnFirstConnectFix(): void {
+    const loadingModelPromises = new Map<alt.Player, ControlledPromise<[alt.Player]>>()
+
+    const resolvePlayer = (promise: ControlledPromise<[alt.Player]>, player: alt.Player): void => {
+      if (!player.valid) {
+        promise.reject(new Error("[playerDamageOnFirstConnectFix] player object is invalid"))
+        return
+      }
+
+      promise.resolve([player])
+    }
+
+    sharedSetup.hookAltEvent(
+      "playerConnect",
+      (player) => {
+        this.log.debug("playerDamageOnFirstConnectFix received playerConnect", player.name, player.id)
+
+        const promise = new ControlledPromise<[alt.Player]>()
+        loadingModelPromises.set(player, promise)
+
+        let timeout = _alt.setTimeout(() => {
+          timeout = 0
+          this.log.warn("[playerDamageOnFirstConnectFix] resolve playerConnect after timeout")
+
+          resolvePlayer(promise, player)
+        }, 5000)
+
+        promise.promise.finally(() => {
+          this.log.debug("playerDamageOnFirstConnectFix promise.finally player:", player.name, player.id)
+          if (timeout) {
+            _alt.clearTimeout(timeout)
+            timeout = 0
+          }
+
+          loadingModelPromises.delete(player)
+        })
+
+        player.emitRaw(CLIENT_EVENTS.loadPlayerModels)
+
+        return promise.promise
+      },
+    )
+
+    // origAltOnClient is only set in dev mode
+    const onClient = this.origAltOnClient ?? _alt.onClient
+
+    onClient(SERVER_EVENTS.playerModelsLoaded, (player) => {
+      this.log.debug("received playerModelsLoaded player:", player.name, player.id)
+
+      const promise = loadingModelPromises.get(player)
+      if (!promise) {
+        this.log.debug("cant get loadingModelPromise, skip")
+        return
+      }
+      resolvePlayer(promise, player)
+    })
   }
 }

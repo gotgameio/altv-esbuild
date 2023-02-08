@@ -21,6 +21,8 @@ export type FilledPluginOptions = Readonly<DeepRequired<ConvertBoolsToObjects<IP
 
 export interface IPluginDevOption {
   /**
+   * If set to false disables every dev option, such as {@link hotReload} or {@link topLevelExceptionHandling}
+   *
    * `true` by default.
    */
   enabled?: boolean
@@ -55,7 +57,7 @@ export interface IPluginDevOption {
   playersReconnectDelay?: number
 
   /**
-   * Should the player's position be reset to the initial position (0, 0, 72) when emulating a reconnect?
+   * Should the player position be reset when emulating a reconnect?
    *
    * Equals `playersReconnect` by default.
    */
@@ -74,6 +76,8 @@ export interface IPluginDevOption {
    * Enables emulation of clientside
    * {@link https://xxshady.github.io/custom-altv-types/interfaces/_alt_client_.iclientevent.html#connectioncomplete connectionComplete}
    * event in dev mode.
+   *
+   * @remarks If you want to change it set value for both "client" and "server" plugin modes!
    *
    * `true` by default if `dev` enabled.
    */
@@ -104,8 +108,6 @@ export interface IPluginDevOption {
   moveExternalsOnTop?: boolean
 
   /**
-   * **Experimental** feature.
-   *
    * Enables enhanced version of {@link restartCommand} option, that works even when script resource is stopped (serverside only).
    *
    * @remarks Overrides {@link restartCommand} option.
@@ -113,6 +115,15 @@ export interface IPluginDevOption {
    * `false` by default.
    */
   enhancedRestartCommand?: boolean | string
+
+  /**
+   * Enables emulation of serverside
+   * {@link https://xxshady.github.io/custom-altv-types/interfaces/_alt_server_.iserverevent.html#serverstarted serverStarted}
+   * event in dev mode.
+   *
+   * `true` by default if `dev` enabled.
+   */
+  serverStartedEvent?: boolean
 }
 
 export interface IPluginFixesOption {
@@ -131,6 +142,17 @@ export interface IPluginFixesOption {
    * `true` by default.
    */
   playerPrototype?: boolean
+
+  /**
+   * **Experimental** feature.
+   *
+   * https://github.com/altmp/altv-issues/issues/1046
+   *
+   * Loads `mp_m_freemode_01` and `mp_f_freemode_01` models before player connect.
+   *
+   * `false` by default.
+   */
+  playerDamageOnFirstConnect?: boolean
 }
 
 export interface IPluginOptions {
@@ -183,6 +205,9 @@ export interface IPluginOptions {
   altvEnums?: boolean
 
   /**
+   * @deprecated Now this is a useless option because
+   * [it was integrated](https://github.com/altmp/altv-js-module/pull/170#issuecomment-1273613155) into the alt:V JS module.
+   *
    * Adds better value formatting to alt.log, alt.logDebug and console.log if code is executed on the clientside
    * (uses util.inspect ported from nodejs).
    *
