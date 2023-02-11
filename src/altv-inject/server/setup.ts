@@ -221,7 +221,7 @@ export class ServerSetup {
       this.log.info(`restarting resource ${name}...`)
 
       _alt.restartResource(name)
-    }, 3000)
+    }, 1250)
 
     // _alt.restartResource(name)
   }
