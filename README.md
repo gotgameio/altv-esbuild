@@ -43,7 +43,7 @@ esbuild.build({
   entryPoints: ["src/main.js"],
   outfile: "dist/bundle.js",
   bundle: true,
-  watch: DEV_MODE,
+  watch: DEV_MODE, // this build option is outdated, see example directory in the repo
   target: "esnext",
   format: "esm",
   
@@ -94,12 +94,22 @@ You can use [esbuild source-maps](https://esbuild.github.io/api/#sourcemap) like
 
 ### serverside
 
-Enable source-maps in [server.cfg](https://docs.altv.mp/articles/configs/server.html)
+Enable source-maps in [server.toml](https://docs.altv.mp/articles/configs/server.html)
 and [here you go](https://imgur.com/HJYM0y1).
 
 ### clientside
 
 Here its a bit complicated. If you use vscode [Source maps navigator](https://marketplace.visualstudio.com/items?itemName=vlkoti.vscode-sourcemaps-navigator) extension can help you jump to your source code.
+
+## Some libraries don't work with bundling
+
+If you see such errors it may mean this is your case:
+- `Error: Dynamic require of "crypto" is not supported`
+- `SyntaxError: Unexpected identifier`
+
+Libraries that must be external: `discord.js`
+
+✅ **Solution:** add this library to [`external`](https://esbuild.github.io/api/#external) build option of esbuild
 
 ## Contributions
 

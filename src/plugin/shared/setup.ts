@@ -168,8 +168,12 @@ export abstract class SharedSetup {
       namespace,
     }))
 
+    const useDefaultExport = this.options.altDefaultImport
+
     build.onLoad({ filter: /.*/, namespace }, () => {
-      return { contents: `module.exports = ${varName}` }
+      return {
+        contents: useDefaultExport ? `export default ${varName}` : `module.exports = ${varName}`,
+      }
     })
   }
 
@@ -190,7 +194,8 @@ export abstract class SharedSetup {
     { external }: IPatchedBuildOptions,
     additionalExternal?: string[],
     additionalTop?: string,
-    moduleContents?: (path: string, externalVarName: string) => string,
+    moduleContents?: (path: string, externalVarName: string | null) => string,
+    additionalExternalStart?: string, // used for nodejs built-in modules whose names begin with "node:"
   ): void {
     const externalsOnTopNamespace = `${PLUGIN_NAME}:externals-on-top`
     const externalRegExpString = [...external, ...(additionalExternal ?? [])].join("|")
@@ -233,11 +238,19 @@ export abstract class SharedSetup {
     this.build.onResolve(
       {
         // eslint-disable-next-line prefer-regex-literals
-        filter: new RegExp(`^(${externalRegExpString})$`),
+        filter: new RegExp(`^(${externalRegExpString}|${additionalExternalStart}.+)$`),
       },
       ({ path }) => {
-        const externalVarName = externalVarNames[path]
+        if (additionalExternalStart && path.startsWith(additionalExternalStart)) {
+          this._log.debug("import additionalExternalStart path:", path)
+          return {
+            path,
+            namespace: externalsOnTopNamespace,
+            pluginData: null,
+          }
+        }
 
+        const externalVarName = codeVarName(`externalOnTop_${path}`)
         // log(`resolve external import ${path}`)
 
         if (!externalVarName) {
@@ -257,7 +270,7 @@ export abstract class SharedSetup {
     this.build.onLoad({ filter: /.*/, namespace: externalsOnTopNamespace },
       ({ pluginData: externalVarName, path }) => {
         return {
-          contents: moduleContents?.(path, externalVarName) ?? (`
+          contents: moduleContents?.(path, (externalVarName ?? null) as string | null) ?? (`
             Object.defineProperty(exports, '__esModule', { value: true })
             for (const key in ${externalVarName}) {
               exports[key] = ${externalVarName}[key]

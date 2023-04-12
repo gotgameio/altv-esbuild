@@ -1,13 +1,12 @@
-import esbuild from "esbuild"
-import * as shared from "./shared"
 import { typesGenerator } from "./types-generator"
+import { onBuildEnd } from "./on-build-end"
+import { ctxWrapper } from "./ctx-wrapper"
 
-const watch = shared.ESBUILD_OPTIONS.watch && { onRebuild: typesGenerator() }
-
-esbuild.build({
-  ...shared.ESBUILD_OPTIONS,
-  watch,
+ctxWrapper({
   entryPoints: ["src/plugin/main.ts"],
   outfile: "dist/plugin/main.js",
   platform: 'node',
-}).then(typesGenerator())
+  plugins: [
+    onBuildEnd(typesGenerator())
+  ],
+})
