@@ -29,6 +29,8 @@ if (_alt.isServer)
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   _net = await (async () => await import("net"))()
 
+const RESOURCE_RESTART_TIMEOUT = 2725;
+
 export class ServerSetup {
   // TODO: need to do something with this shit: (e.g. when only server changes it takes time to restart)
   private static readonly MAX_ANOTHER_BUILD_START_MS = 500
@@ -221,7 +223,7 @@ export class ServerSetup {
       this.log.info(`restarting resource ${name}...`)
 
       _alt.restartResource(name)
-    }, 1250)
+    }, RESOURCE_RESTART_TIMEOUT)
 
     // _alt.restartResource(name)
   }
